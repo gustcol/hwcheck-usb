@@ -1,0 +1,42 @@
+# dmidecode 3.6
+Handle 0x0040, DMI type 17, 92 bytes
+Memory Device
+	Array Handle: 0x003F
+	Size: 32 GB
+	Locator: DIMM_A1
+	Speed: 3200 MT/s
+	Manufacturer: Corsair
+	Part Number: CMK64GX4M2E3200C16  
+	Configured Memory Speed: 2933 MT/s
+
+Handle 0x0041, DMI type 17, 92 bytes
+Memory Device
+	Size: No Module Installed
+	Locator: DIMM_A2
+
+Handle 0x0042, DMI type 17, 92 bytes
+Memory Device
+	Size: 32768 MB
+	Locator: DIMM_B1
+	Speed: 3200 MT/s
+	Manufacturer: Corsair
+	Part Number: CMK64GX4M2E3200C16
+	Configured Memory Speed: 2933 MT/s
+
+Handle 0x0043, DMI type 17, 92 bytes
+Memory Device
+	Size: 32 GB
+	Locator: DIMM_C1
+	Speed: 3200 MT/s
+	Manufacturer: Corsair
+	Part Number: CMK64GX4M2E3200C16
+	Configured Memory Speed: 2933 MT/s
+
+Handle 0x0044, DMI type 17, 92 bytes
+Memory Device
+	Size: 32 GB
+	Locator: DIMM_D1
+	Speed: 3200 MT/s
+	Manufacturer: Corsair
+	Part Number: CMK64GX4M2E3200C16
+	Configured Memory Speed: 2933 MT/s

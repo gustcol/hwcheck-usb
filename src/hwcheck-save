@@ -1,0 +1,11 @@
+#!/bin/bash
+# Copy the last report to a partition labeled HWREPORT (plug in a stick first).
+set -uo pipefail
+HWCHECK_LIB=${HWCHECK_LIB:-/usr/local/lib/hwcheck}
+# shellcheck source=src/lib/common.sh
+. "$HWCHECK_LIB/common.sh"
+# shellcheck source=src/lib/report.sh
+. "$HWCHECK_LIB/report.sh"
+[ -r "$REPORT_TXT" ] || { echo "no report yet, run hwcheck first"; exit 1; }
+RESULTS_TSV=/dev/null
+save_report

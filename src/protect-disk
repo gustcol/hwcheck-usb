@@ -1,0 +1,21 @@
+#!/bin/bash
+# Called by udev for every new disk or partition. Marks it read-only in the
+# kernel unless it belongs to the stick we booted from.
+set -u
+name=${1:?usage: protect-disk KERNEL_NAME}
+sys=/sys/class/block/$name
+[ -e "$sys" ] || exit 0
+
+parent() {
+    if [ -e "/sys/class/block/$1/partition" ]; then
+        basename "$(dirname "$(readlink -f "/sys/class/block/$1")")"
+    else
+        printf '%s\n' "$1"
+    fi
+}
+
+live=$(/usr/bin/findmnt -no SOURCE /run/live/medium 2>/dev/null | head -1)
+if [ -n "$live" ] && [ "$(parent "$name")" = "$(parent "${live#/dev/}")" ]; then
+    exit 0
+fi
+/usr/sbin/blockdev --setro "/dev/$name" && /usr/bin/logger -t hwcheck "locked /dev/$name read-only"

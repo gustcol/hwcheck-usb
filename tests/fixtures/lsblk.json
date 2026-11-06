@@ -1,0 +1,8 @@
+{"blockdevices": [
+ {"name":"nvme0n1","size":2000398934016,"type":"disk","tran":"nvme","rota":false,"model":"Samsung SSD 970 EVO Plus 2TB   ","serial":"S4J4NX0R123"},
+ {"name":"sda","size":512110190592,"type":"disk","tran":"sata","rota":false,"model":"Crucial MX500","serial":"2019E2A1"},
+ {"name":"sdb","size":32015679488,"type":"disk","tran":"usb","rota":false,"model":"SanDisk","serial":"4C53"},
+ {"name":"sdc","size":4000787030016,"type":"disk","tran":"sata","rota":true,"model":"WDC WD40","serial":"WD-1"},
+ {"name":"sr0","size":1073741312,"type":"rom","tran":"sata","rota":true,"model":"DVD","serial":null},
+ {"name":"zram0","size":4294967296,"type":"disk","tran":null,"rota":false,"model":null,"serial":null}
+]}

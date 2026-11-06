@@ -1,0 +1,8 @@
+10.0%  proc'd: 1200 (14650 Gflop/s)   errors: 0   temps: 71 C 100.0%  proc'd: 9000 (14702 Gflop/s)   errors: 0   temps: 80 C 
+Killing processes with SIGTERM (soft kill)
+Freed memory for dev 0
+Uninitted cublas
+done
+
+Tested 1 GPUs:
+	GPU 0: OK

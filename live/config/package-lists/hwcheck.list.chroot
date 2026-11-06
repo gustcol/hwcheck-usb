@@ -1,0 +1,34 @@
+# NVIDIA driver (proprietary kernel module, built with DKMS during the image build)
+nvidia-kernel-dkms
+nvidia-smi
+libcuda1
+libnvidia-ml1
+nvidia-modprobe
+firmware-nvidia-gsp
+dkms
+
+# Test tools
+stress-ng
+stressapptest
+fio
+smartmontools
+nvme-cli
+
+# Inventory and console
+dmidecode
+pciutils
+usbutils
+lm-sensors
+ethtool
+iproute2
+jq
+figlet
+kbd
+console-setup
+htop
+less
+procps
+util-linux
+ncurses-bin
+intel-microcode
+amd64-microcode

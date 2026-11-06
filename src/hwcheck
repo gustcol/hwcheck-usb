@@ -1,0 +1,152 @@
+#!/bin/bash
+# hwcheck: checks this machine against an expected spec, puts every part
+# under load, and ends with a single PASSED / FAILED screen.
+#
+# Kernel command line options (set by the boot menu):
+#   hwcheck.mode=quick|full|smoke|shell   test length (default quick)
+#   hwcheck.profile=NAME                  /etc/hwcheck/profiles/NAME.conf (default target)
+#   hwcheck.serial=1                      mirror output to ttyS0 (VM testing)
+set -uo pipefail
+
+HWCHECK_LIB=${HWCHECK_LIB:-/usr/local/lib/hwcheck}
+# shellcheck source=src/lib/common.sh
+. "$HWCHECK_LIB/common.sh"
+# shellcheck source=src/lib/inventory.sh
+. "$HWCHECK_LIB/inventory.sh"
+# shellcheck source=src/lib/disks.sh
+. "$HWCHECK_LIB/disks.sh"
+# shellcheck source=src/lib/stress.sh
+. "$HWCHECK_LIB/stress.sh"
+# shellcheck source=src/lib/report.sh
+. "$HWCHECK_LIB/report.sh"
+
+set_durations() {
+    case $MODE in
+    quick) T_GPU=240 T_CPU=180 T_RAM=240 T_COMBO=120 T_DISK=20 ;;
+    full) T_GPU=900 T_CPU=900 T_RAM=1200 T_COMBO=600 T_DISK=60 ;;
+    smoke) T_GPU=20 T_CPU=20 T_RAM=20 T_COMBO=20 T_DISK=5 ;;
+    *)
+        echo "unknown hwcheck.mode '$MODE', using quick"
+        MODE=quick
+        set_durations
+        ;;
+    esac
+}
+
+setup_console() {
+    local w
+    [ -t 1 ] || return 0
+    setterm --blank 0 --powersave off 2>/dev/null || true
+    w=$(cut -d, -f1 /sys/class/graphics/fb0/virtual_size 2>/dev/null || echo 0)
+    if [ "${w:-0}" -ge 1900 ]; then
+        setfont /usr/share/consolefonts/Uni2-TerminusBold32x16.psf.gz 2>/dev/null || true
+    elif [ "${w:-0}" -ge 1280 ]; then
+        setfont /usr/share/consolefonts/Uni2-TerminusBold24x12.psf.gz 2>/dev/null || true
+    fi
+    COLUMNS=$(tput cols 2>/dev/null || echo 100)
+}
+
+load_profile() {
+    PROFILE=$(cmdline_get hwcheck.profile target)
+    [[ $PROFILE =~ ^[a-z0-9-]+$ ]] || PROFILE=target
+    if [ ! -r "$PROFILE_DIR/$PROFILE.conf" ]; then
+        echo "profile $PROFILE not found, using target"
+        PROFILE=target
+    fi
+    # shellcheck source=profiles/target.conf
+    . "$PROFILE_DIR/$PROFILE.conf"
+}
+
+on_abort() {
+    trap - INT TERM
+    printf '\n\n%sStopping tests...%s\n' "$C_YEL" "$C_0"
+    stop_background
+    result Run Aborted FAIL "stopped by the operator before all tests finished"
+    finish
+    exec /bin/bash -l
+}
+
+finish() {
+    local overall verdict
+    overall=$(overall_status)
+    case $overall in
+    PASS) verdict="PASSED" ;;
+    WARN) verdict="PASSED WITH WARNINGS" ;;
+    *) verdict="FAILED" ;;
+    esac
+    write_text_report "$verdict"
+    write_html_report "$verdict"
+    save_report || true
+    write_text_report "$verdict"
+    show_verdict "$overall" "$verdict"
+    [ "$SERIAL" = 1 ] && cat "$REPORT_TXT"
+    return 0
+}
+
+main() {
+    RUN_START=$SECONDS
+    MODE=$(cmdline_get hwcheck.mode quick)
+    SERIAL=$(cmdline_get hwcheck.serial 0)
+    if [ "$SERIAL" = 1 ] && [ -w /dev/ttyS0 ]; then
+        exec > >(tee -a /dev/ttyS0) 2>&1
+    fi
+    if [ "$MODE" = shell ]; then
+        exec /bin/bash -l
+    fi
+    init_dirs
+    setup_console
+    load_profile
+    set_durations
+    trap on_abort INT TERM
+    udevadm settle --timeout=30 2>/dev/null || true
+
+    clear 2>/dev/null || true
+    printf '%s' "$C_CYN"
+    big_text "HW CHECK"
+    printf '%s' "$C_0"
+    printf '  Expected: %s%s%s\n' "$C_B" "$SPEC_NAME" "$C_0"
+    printf '  Mode: %s (about %s minutes). Press Ctrl+C to stop early.\n' "$MODE" \
+        $(((T_GPU + T_CPU + T_RAM + T_COMBO + 4 * T_DISK + 120) / 60))
+    printf '  Internal disks are locked read-only. Nothing on them is changed.\n'
+
+    klog_mark
+    discover_disks
+    section "Write protection"
+    protect_disks
+
+    section "1/7 Inventory"
+    check_board
+    check_cpu
+    check_ram
+    check_gpu
+    check_disks_inventory
+    check_network
+
+    section "2/7 Disk read test"
+    run_disk_read "$T_DISK"
+
+    section "3/7 Disk health (SMART)"
+    check_disk_health
+
+    section "4/7 GPU stress (gpu-burn)"
+    run_gpu_stress "$T_GPU"
+
+    section "5/7 CPU stress (stress-ng)"
+    run_cpu_stress "$T_CPU"
+
+    section "6/7 Memory stress (stressapptest)"
+    run_ram_stress "$T_RAM"
+
+    section "7/7 Full system load (CPU + GPU together)"
+    run_combined "$T_COMBO"
+
+    section "Final checks"
+    finish_disk_selftests
+    check_kernel_log
+
+    trap - INT TERM
+    finish
+}
+
+main "$@"
+exec /bin/bash -l

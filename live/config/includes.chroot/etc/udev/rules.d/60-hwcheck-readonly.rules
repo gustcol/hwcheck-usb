@@ -1,0 +1,3 @@
+# Lock every internal disk and partition read-only as soon as it appears.
+# USB devices are left alone so the boot stick and report sticks stay writable.
+ACTION=="add|change", SUBSYSTEM=="block", ENV{ID_BUS}!="usb", KERNEL!="loop*|ram*|zram*|sr*|dm-*|md*", RUN+="/usr/local/lib/hwcheck/protect-disk %k"

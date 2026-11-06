@@ -1,0 +1,3 @@
+100.0%  proc'd: 9000 (14702 Gflop/s)   errors: 512 (WARNING!)  temps: 80 C
+Tested 1 GPUs:
+	GPU 0: FAULTY

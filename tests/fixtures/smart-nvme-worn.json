@@ -1,0 +1,2 @@
+{"smart_status":{"passed":true},"power_on_time":{"hours":30000},"temperature":{"current":50},
+ "nvme_smart_health_information_log":{"critical_warning":0,"media_errors":0,"percentage_used":95,"available_spare":100,"available_spare_threshold":10}}

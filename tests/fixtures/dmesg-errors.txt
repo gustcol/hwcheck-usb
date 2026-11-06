@@ -1,0 +1,4 @@
+[  120.000000] mce: [Hardware Error]: Machine check events logged
+[  130.000000] NVRM: Xid (PCI:0000:65:00): 79, pid=1234, GPU has fallen off the bus.
+[  140.000000] blk_update_request: I/O error, dev nvme0n1, sector 2048
+[  150.000000] pcieport 0000:00:01.0: AER: Corrected error received: 0000:00:01.0

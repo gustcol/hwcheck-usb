@@ -1,0 +1,19 @@
+#!/bin/sh
+# Build the NVIDIA module for the image kernel and enable the test service.
+set -e
+
+for d in /lib/modules/*; do
+    v=${d##*/}
+    if [ -e "$d/build" ] || [ -d "/usr/src/linux-headers-$v" ]; then
+        dkms autoinstall -k "$v"
+    fi
+done
+if ! find /lib/modules -name 'nvidia.ko*' | grep -q .; then
+    echo "E: the NVIDIA kernel module was not built" >&2
+    exit 1
+fi
+
+systemctl enable hwcheck.service
+# smartd would poll the disks on its own; hwcheck runs smartctl itself.
+systemctl disable smartmontools.service 2>/dev/null || true
+systemctl mask smartd.service 2>/dev/null || true

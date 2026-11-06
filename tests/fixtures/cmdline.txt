@@ -1,0 +1,1 @@
+BOOT_IMAGE=/live/vmlinuz boot=live hwcheck.mode=full hwcheck.profile=vm-test quiet
