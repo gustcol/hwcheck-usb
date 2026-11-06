@@ -61,8 +61,11 @@ sync
 partprobe "$dev" 2>/dev/null || blockdev --rereadpt "$dev" || true
 sleep 2
 
-# Append a FAT32 partition after the image, using the rest of the stick
-echo ',,c' | sfdisk --append --no-reread "$dev"
+# The image is GPT with a protective MBR. Its backup GPT header sits at the
+# end of the image, not the end of the stick, so move it there first. Then
+# add a FAT32 ("Microsoft basic data") partition in the space that's left.
+sfdisk --relocate gpt-bak-std "$dev"
+echo ',,EBD0A0A2-B9E5-4433-87C0-68B6B72699C7' | sfdisk --append --no-reread "$dev"
 partprobe "$dev" 2>/dev/null || blockdev --rereadpt "$dev" || true
 sleep 2
 part=$(lsblk -lnpo NAME "$dev" | tail -1)

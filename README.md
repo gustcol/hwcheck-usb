@@ -35,8 +35,9 @@ second small stick for the report.
    lsblk -o NAME,SIZE,TRAN,MODEL                               # Linux: find the stick, e.g. /dev/sdb
    sudo tools/make-usb.sh ~/Downloads/hwcheck-YYYYMMDD.iso /dev/sdb
    ```
-   On Windows use Rufus in "DD image" mode. Details per OS are in
-   [Writing the stick](#writing-the-stick).
+   On Windows use Rufus in "DD image" mode or balenaEtcher. You don't need
+   to format the stick first. See [USB stick format](#usb-stick-format)
+   for why, and [Writing the stick](#writing-the-stick) for details per OS.
 3. **Optional report stick (macOS only).** On Linux the helper already adds
    a `HWREPORT` partition. On macOS, format a second stick:
    `diskutil eraseDisk FAT32 HWREPORT MBR /dev/diskN`.
@@ -123,6 +124,44 @@ At the end you get a big verdict on screen and two files in
 partition labeled `HWREPORT` is present on any USB stick, the report and
 logs are copied there automatically. `make-usb.sh` creates that partition
 on Linux. Plugging a stick in later and running `hwcheck-save` works too.
+
+## USB stick format
+
+You don't need to format the stick first. Its current format doesn't
+matter (FAT32, exFAT, NTFS, GPT or MBR), because writing the image replaces
+the whole stick byte for byte, partition table included.
+
+After writing, the stick has this layout:
+
+| Part | What it is |
+|------|------------|
+| Partition table | **GPT**, with a protective MBR that also holds GRUB's BIOS boot code |
+| Partition 1 | 156 KB gap (part of the ISO layout) |
+| Partition 2 | 3.3 MB EFI System Partition (FAT), used by UEFI boot |
+| Partition 3 | 754 MB ISO 9660 filesystem with the live system |
+| Partition 4 | rest of the stick, FAT32 labeled `HWREPORT` (only when written with `make-usb.sh` on Linux) |
+
+This is an "ISO hybrid" image, so the same stick boots on UEFI machines and
+on legacy BIOS / CSM machines. Both were tested.
+
+What this means in practice:
+
+- **Write it as a raw image** (dd mode). Don't copy the files onto an
+  already formatted stick, and don't use a tool that "extracts" the ISO.
+  The boot code won't be there and the stick won't boot.
+- **Rufus:** after picking the ISO, Rufus asks how to write it. Choose
+  **"Write in DD Image mode"**. The "Partition scheme" and "File system"
+  boxes are ignored in that mode, so leave them as they are.
+- **balenaEtcher** always writes in raw mode, so there's nothing to choose.
+- Windows may say the stick "needs to be formatted" after writing. Click
+  **Cancel**. Windows doesn't understand the ISO partition, and formatting
+  would erase the stick.
+- To use the stick for something else later, format it again normally
+  (Windows Disk Management, `diskutil eraseDisk`, or a new partition table
+  on Linux).
+
+The optional second **report stick** is a normal stick: FAT32, MBR (or
+GPT), volume label `HWREPORT`.
 
 ## Writing the stick
 
