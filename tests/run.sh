@@ -19,6 +19,8 @@ trap 'rm -rf "$RUN_DIR"' EXIT
 . "$LIB/stress.sh"
 # shellcheck source=src/lib/report.sh
 . "$LIB/report.sh"
+# shellcheck source=src/lib/profile.sh
+. "$LIB/profile.sh"
 init_dirs
 
 pass=0
@@ -110,6 +112,53 @@ KLOG_IGNORE='sr[0-9]|loop[0-9]|\bsdb[0-9]*\b'
 eq "klog usb ignored" "" "$(klog_eval "$RUN_DIR/u.txt")"
 printf 'blk_update_request: I/O error, dev sdbx, sector 9\n' >"$RUN_DIR/u.txt"
 eq "klog other disk counted" "Disk 1" "$(klog_eval "$RUN_DIR/u.txt" | tr '\t' ' ')"
+
+# hwcheck.conf from a stick: Windows line endings, BOM, quotes, junk lines
+profile_reset
+PROFILE_WARNINGS=()
+profile_apply_file "$FX/hwcheck-windows.conf"
+eq "conf spec name" "RTX 3090 24GB / Ryzen 9 5950X / 64GB / 2TB" "$SPEC_NAME"
+eq "conf lowercase key, literal model" 'Ryzen 9 5950X' "$CPU_MODEL_REGEX"
+eq "conf cores" 16 "$CPU_CORES"
+eq "conf bad int keeps last good value" 32 "$CPU_THREADS"
+eq "conf ram" 64 "$RAM_GB"
+eq "conf model regex chars escaped" 'GeForce RTX 3090 \(Ti\)' "$GPU_MODEL_REGEX"
+[[ "NVIDIA GeForce RTX 3090 (Ti)" =~ $GPU_MODEL_REGEX ]] && r=match || r=nomatch
+eq "conf escaped model matches literally" match "$r"
+eq "conf vram GB to MiB" 23101 "$GPU_VRAM_MIB_MIN"
+eq "conf GPU implied by model" 1 "$GPU_REQUIRED"
+eq "conf disk TB with comma" 2400 "$DISK_TOTAL_GB_MIN"
+eq "conf flags with shell junk rejected" "" "$CPU_FLAGS_REQUIRED"
+eq "conf warnings" 5 "${#PROFILE_WARNINGS[@]}"
+eq "conf unknown key warned" 1 "$(printf '%s\n' "${PROFILE_WARNINGS[@]}" | grep -c "unknown setting 'COLOR'")"
+eq "conf bad regex warned" 1 "$(printf '%s\n' "${PROFILE_WARNINGS[@]}" | grep -c "CPU_MODEL_REGEX is not a valid pattern")"
+eq "conf no-equals line warned" 1 "$(printf '%s\n' "${PROFILE_WARNINGS[@]}" | grep -c "expected KEY=VALUE, got 'rm -rf /'")"
+printf 'GPU_MODEL=RTX\nGPU_REQUIRED=0\n' >"$RUN_DIR/g.conf"
+profile_reset
+profile_apply_file "$RUN_DIR/g.conf"
+eq "conf explicit GPU_REQUIRED=0 kept" 0 "$GPU_REQUIRED"
+printf '\xef\xbb\xbfGPU_REQUIRED=0\r\nGPU_MODEL=RTX\r\n' >"$RUN_DIR/bom.conf"
+profile_reset
+profile_apply_file "$RUN_DIR/bom.conf"
+eq "conf BOM first line GPU_REQUIRED=0 kept" 0 "$GPU_REQUIRED"
+PROFILE_WARNINGS=()
+printf 'CPU_CORES CPU_THREADS=4\n' >"$RUN_DIR/sp.conf"
+profile_apply_file "$RUN_DIR/sp.conf" 2>"$RUN_DIR/sp.err"
+eq "conf spaced key warned, no bash error" "1 0" "${#PROFILE_WARNINGS[@]} $(wc -c <"$RUN_DIR/sp.err" | tr -d ' ')"
+mkdir -p "$RUN_DIR/stick"
+echo "RAM_GB=8" >"$RUN_DIR/stick/HWCHECK.CONF.TXT"
+eq "conf .txt name found" "$RUN_DIR/stick/HWCHECK.CONF.TXT" "$(profile_in_dir "$RUN_DIR/stick")"
+echo "RAM_GB=8" >"$RUN_DIR/stick/hwcheck.conf"
+eq "conf exact name preferred" "$RUN_DIR/stick/hwcheck.conf" "$(profile_in_dir "$RUN_DIR/stick")"
+head -c 70000 /dev/zero >"$RUN_DIR/stick/hwcheck.conf"
+eq "conf over 64 KB skipped" "$RUN_DIR/stick/HWCHECK.CONF.TXT" "$(profile_in_dir "$RUN_DIR/stick")"
+profile_reset
+eq "reset checks nothing" "0 0 0 0" "$CPU_CORES $RAM_GB $GPU_REQUIRED $DISK_TOTAL_GB_MIN"
+profile_write "$RUN_DIR/w.conf"
+profile_reset
+PROFILE_WARNINGS=()
+profile_apply_file "$RUN_DIR/w.conf"
+eq "written conf reads back cleanly" 0 "${#PROFILE_WARNINGS[@]}"
 
 # results and verdict
 result CPU Model PASS "x" >/dev/null

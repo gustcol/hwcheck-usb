@@ -4,7 +4,8 @@
 #
 # Kernel command line options (set by the boot menu):
 #   hwcheck.mode=quick|full|smoke|shell   test length (default quick)
-#   hwcheck.profile=NAME                  /etc/hwcheck/profiles/NAME.conf (default target)
+#   hwcheck.profile=NAME|auto|ask         built-in profile, no spec check, or ask at boot
+#                                         (default: hwcheck.conf on a USB stick, else target)
 #   hwcheck.serial=1                      mirror output to ttyS0 (VM testing)
 set -uo pipefail
 
@@ -19,6 +20,8 @@ HWCHECK_LIB=${HWCHECK_LIB:-/usr/local/lib/hwcheck}
 . "$HWCHECK_LIB/stress.sh"
 # shellcheck source=src/lib/report.sh
 . "$HWCHECK_LIB/report.sh"
+# shellcheck source=src/lib/profile.sh
+. "$HWCHECK_LIB/profile.sh"
 
 set_durations() {
     case $MODE in
@@ -46,15 +49,68 @@ setup_console() {
     COLUMNS=$(tput cols 2>/dev/null || echo 100)
 }
 
+# Where the expected specs come from, in this order:
+#   1. hwcheck.profile=auto   nothing is compared, the machine is only stress tested
+#   2. hwcheck.profile=ask    the operator types the specs at boot
+#   3. hwcheck.profile=NAME   a profile built into the image
+#   4. a hwcheck.conf file at the top of any USB stick
+#   5. the built-in "target" profile
 load_profile() {
-    PROFILE=$(cmdline_get hwcheck.profile target)
-    [[ $PROFILE =~ ^[a-z0-9-]+$ ]] || PROFILE=target
+    local name found=""
+    name=$(cmdline_get hwcheck.profile "")
+    case $name in
+    auto)
+        PROFILE=auto
+        profile_reset
+        return
+        ;;
+    ask)
+        PROFILE=ask
+        ask_profile
+        return
+        ;;
+    esac
+    # A stick on a slow hub can show up a few seconds after udev settles
+    if [ -z "$name" ] && ! found=$(find_usb_profile); then
+        sleep 4
+        udevadm settle --timeout=10 2>/dev/null || true
+        found=$(find_usb_profile) || found=""
+    fi
+    if [ -z "$name" ] && [ -n "$found" ]; then
+        PROFILE=usb
+        PROFILE_SOURCE=${found#*$'\t'}
+        profile_reset
+        SPEC_NAME="from $PROFILE_FILE_NAME on $PROFILE_SOURCE"
+        profile_apply_file "${found%%$'\t'*}"
+        cp "${found%%$'\t'*}" "$LOG_DIR/$PROFILE_FILE_NAME" 2>/dev/null
+        return
+    fi
+    PROFILE=${name:-target}
+    if [[ ! $PROFILE =~ ^[a-z0-9-]+$ ]]; then
+        profile_warn "profile name '$PROFILE' is not valid, using target"
+        PROFILE=target
+    fi
     if [ ! -r "$PROFILE_DIR/$PROFILE.conf" ]; then
-        echo "profile $PROFILE not found, using target"
+        profile_warn "profile '$PROFILE' not found, using target"
         PROFILE=target
     fi
     # shellcheck source=profiles/target.conf
     . "$PROFILE_DIR/$PROFILE.conf"
+}
+
+# Record where the specs came from, and any problems in a hwcheck.conf
+report_profile() {
+    local w
+    case $PROFILE in
+    usb) result System "Expected specs" INFO "$PROFILE_FILE_NAME from USB $PROFILE_SOURCE" ;;
+    ask) result System "Expected specs" INFO "typed in at boot" ;;
+    auto) result System "Expected specs" INFO "none, any hardware (stress tests only)" ;;
+    *) result System "Expected specs" INFO "built-in profile '$PROFILE'" ;;
+    esac
+    for w in "${PROFILE_WARNINGS[@]}"; do
+        result System "Specs file" WARN "$w"
+    done
+    return 0
 }
 
 on_abort() {
@@ -95,10 +151,14 @@ main() {
     fi
     init_dirs
     setup_console
-    load_profile
     set_durations
-    trap on_abort INT TERM
     udevadm settle --timeout=30 2>/dev/null || true
+    discover_disks
+    protect_disks quiet
+    # Ctrl+C while typing specs: give the operator a shell, not a dead tty1
+    trap 'trap - INT TERM; printf "\n"; exec /bin/bash -l' INT TERM
+    load_profile
+    trap on_abort INT TERM
 
     clear 2>/dev/null || true
     printf '%s' "$C_CYN"
@@ -110,11 +170,11 @@ main() {
     printf '  Internal disks are locked read-only. Nothing on them is changed.\n'
 
     klog_mark
-    discover_disks
     section "Write protection"
     protect_disks
 
     section "1/7 Inventory"
+    report_profile
     check_board
     check_cpu
     check_ram

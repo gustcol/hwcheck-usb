@@ -43,6 +43,7 @@ install -D -m 0755 /src/src/hwcheck "$inc/usr/local/bin/hwcheck"
 install -D -m 0755 /src/src/hwcheck-save "$inc/usr/local/bin/hwcheck-save"
 install -D -m 0755 /src/src/protect-disk "$inc/usr/local/lib/hwcheck/protect-disk"
 install -m 0644 /src/src/lib/*.sh "$inc/usr/local/lib/hwcheck/"
+install -D -m 0644 /src/profiles/hwcheck.conf.example "$inc/usr/share/doc/hwcheck/hwcheck.conf.example"
 install -D -m 0644 -t "$inc/etc/hwcheck/profiles" /src/profiles/*.conf
 install -m 0755 /work/gpu-burn/gpu_burn "$inc/usr/local/lib/hwcheck/gpu_burn"
 install -m 0644 /work/gpu-burn/compare.fatbin "$inc/usr/local/lib/hwcheck/compare.fatbin"
@@ -56,7 +57,7 @@ cp /src/live/bootloaders/grub-pc/*.cfg config/bootloaders/grub-pc/
 lb build 2>&1 | tee /out/build.log
 
 iso=$(find "$LB" -maxdepth 1 -name "*.iso" | head -1)
-name=hwcheck-$(date +%Y%m%d).iso
+name=hwcheck-${HWCHECK_VERSION:-$(date +%Y%m%d)}.iso
 cp "$iso" "/out/$name"
 (cd /out && sha256sum "$name" >"$name.sha256")
 chown "${HOST_UID:-0}:${HOST_GID:-0}" /out/* 2>/dev/null || true

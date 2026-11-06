@@ -209,7 +209,9 @@ temperatures give a warning (weak cooling), not a failure.
 
 ## Boot menu
 
-The menu waits 10 seconds, then starts **QUICK** on its own.
+The menu waits 10 seconds, then starts **QUICK** on its own. QUICK and FULL
+use a `hwcheck.conf` from a USB stick if one is plugged in, and the
+built-in specs otherwise.
 
 | Entry | Time | Notes |
 |-------|------|-------|
@@ -218,6 +220,8 @@ The menu waits 10 seconds, then starts **QUICK** on its own.
 | Memory test (memtest86+) | open-ended | standalone RAM test, no OS |
 | QUICK, safe graphics | ~15 min | use this if the screen goes black after the menu |
 | Shell only | | a root shell with all the tools, no tests |
+| Other machines > type the specs | ~15 / ~60 min | asks for the expected specs on screen, see [Testing a different machine](#testing-a-different-machine) |
+| Other machines > any hardware | ~15 / ~60 min | stress tests only, nothing is compared |
 | Developer > Smoke test | ~3 min | 20 s per test, VM profile, output on the serial port |
 
 Works with UEFI and legacy BIOS. **Secure Boot must be off** (the NVIDIA
@@ -329,27 +333,128 @@ tests/run.sh                                   # parser unit tests (bash + jq)
 shellcheck -x src/hwcheck src/lib/*.sh tools/*.sh build.sh
 sudo tools/vm-test.sh out/hwcheck-*.iso ovmf     # on a Proxmox VE host
 sudo tools/vm-test.sh out/hwcheck-*.iso seabios default
+sudo tools/vm-test.sh out/hwcheck-*.iso ovmf smoke-auto     # any hardware
+sudo PROFILE_CONF=profiles/hwcheck.conf.example \
+    tools/vm-test.sh out/hwcheck-*.iso ovmf smoke-usb      # specs from a USB stick
 ```
 
 `vm-test.sh` creates a throwaway VM (4 vCPU, 8 GB, two disks), picks a menu
 entry with virtual key presses, reads the report from the serial port,
 saves screenshots, checks the disks were untouched, and deletes the VM.
 
-## Using it for another machine
+## Testing a different machine
 
-Copy `profiles/target.conf`, change the values, rebuild. Any value set to
-`0` is skipped. `GPU_REQUIRED=0` skips the GPU checks entirely.
+The stick checks against the Quadro RTX 6000 / i9-10980XE specs by default.
+You don't have to rebuild anything to test another machine. Pick whichever
+of these is easiest:
+
+| Way | Good for | What you do |
+|---|---|---|
+| **Type the specs at boot** | one-off checks, no other computer needed | In the boot menu open **Other machines** and pick **QUICK, type the expected specs on screen**. |
+| **A `hwcheck.conf` file on a USB stick** | the same specs over and over, or sending specs to someone | Make the file once, put it on any stick, plug it in with the test stick, and start QUICK or FULL as usual. |
+| **Any hardware** | just burning in a machine, no listing to compare to | **Other machines > QUICK, any hardware**. Everything is stress tested and nothing is compared. |
+| **Built-in profile** | a permanent new default | `tools/hwcheck-profile.sh --builtin NAME`, then rebuild (see [Building](#building)). |
+
+The result screen and the report always say where the specs came from
+(the first line of the inventory: "Expected specs").
+
+### Typing the specs at boot
+
+1. In the boot menu, press the down arrow to **Other machines (different
+   specs) ...** and press `Enter`.
+2. Pick **QUICK, type the expected specs on screen** (or the FULL one).
+3. The screen asks one question at a time and suggests what the machine
+   itself reports. Type the value from the sales listing and press `Enter`.
+   Press `Enter` alone to accept the suggestion, or type `-` to skip that
+   check.
+
+Accepting every suggestion only proves the machine works, not that it
+matches the listing. Type the advertised values when you can.
+
+### Making a `hwcheck.conf` file
+
+**The easy way, with the wizard** (macOS or Linux):
+
+```bash
+tools/hwcheck-profile.sh                 # asks the questions, writes ./hwcheck.conf
+tools/hwcheck-profile.sh --to-usb        # same, and copies it to a stick labeled HWREPORT
+```
+
+Or with no questions, for scripts:
+
+```bash
+tools/hwcheck-profile.sh --cpu i7-12700K --cores 12 --threads 20 --avx512 no \
+    --ram 32 --gpu "RTX 3080" --vram 10 --disk 1 --out hwcheck.conf
+```
+
+**By hand** (any computer, including Windows): copy
+[profiles/hwcheck.conf.example](profiles/hwcheck.conf.example), edit the
+values in Notepad or TextEdit, and save it as `hwcheck.conf`. Windows may
+add `.txt` to the name, so turn on "File name extensions" in Explorer and
+check.
+
+Check a file before you use it:
+
+```bash
+tools/hwcheck-profile.sh --check hwcheck.conf
+```
+
+The file in short:
+
+| Setting | Example | Checks |
+|---|---|---|
+| `SPEC_NAME` | `Gaming PC for sale` | title on the result screen |
+| `CPU_MODEL` | `i7-12700K` | text that must appear in the CPU name |
+| `CPU_CORES`, `CPU_THREADS` | `12`, `20` | exact counts |
+| `CPU_FLAGS_REQUIRED` | `avx2 avx512f` | CPU features |
+| `RAM_GB` | `32` | installed memory |
+| `GPU_MODEL` | `RTX 3080` | text that must appear in the NVIDIA GPU name |
+| `GPU_VRAM_GB` | `10` | GPU memory |
+| `GPU_REQUIRED` | `0` | set to 0 for a machine without an NVIDIA GPU |
+| `DISK_TOTAL_TB` | `1` or `2,5` | all internal disks together |
+
+Anything left out is not checked. Model names are plain text, matched
+anywhere in the name the machine reports. Use the short part: Intel CPUs
+report "Intel(R) Core(TM) i7-12700K", so `i7-12700K` matches but
+`Core i7-12700K` doesn't.
+
+**Putting the file on a stick.** It goes at the top level of any USB stick
+formatted FAT32, exFAT or NTFS, named exactly `hwcheck.conf`. Plug that
+stick in together with the test stick before you power on. On Linux,
+`make-usb.sh` can put it straight onto the test stick's HWREPORT partition:
+
+```bash
+sudo tools/make-usb.sh hwcheck-YYYYMMDD.iso /dev/sdX hwcheck.conf
+```
+
+The file is only read, never run: unknown settings and bad values are
+ignored and listed as warnings in the report. If more than one stick has a
+`hwcheck.conf`, the first one found is used. The built-in menu entries in
+**Other machines** and **Developer** ignore the file.
+
+### A new built-in profile
+
+```bash
+tools/hwcheck-profile.sh --builtin my-pc --cpu i7-12700K --cores 12 --threads 20 --ram 32
+```
+
+This writes `profiles/my-pc.conf`. Boot it with `hwcheck.profile=my-pc` on
+the kernel command line (add a menu entry in
+`live/bootloaders/grub-pc/grub.cfg`), or change `target.conf` to make it the
+default, then rebuild. In built-in profiles a value of `0` is not checked.
 
 ## Layout
 
 ```
 src/hwcheck            main script (runs on tty1 at boot)
-src/lib/*.sh           inventory, disks, stress, report
+src/lib/*.sh           inventory, disks, stress, report, profile (hwcheck.conf)
 src/protect-disk       udev helper that locks disks read-only
-profiles/*.conf        expected hardware
+profiles/*.conf        expected hardware (built in)
+profiles/hwcheck.conf.example   template for a specs file on a USB stick
 live/                  live-build config, boot menu, systemd/udev files
 docker/                gpu-burn build
 tools/make-usb.sh      write the stick
+tools/hwcheck-profile.sh   make or check a hwcheck.conf
 tools/vm-test.sh       end-to-end VM test on Proxmox
 tests/                 unit tests and fixtures
 ```

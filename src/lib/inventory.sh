@@ -42,7 +42,9 @@ count_cpu_topology() {
 check_cpu() {
     local model sockets cores threads flags f missing="" mhz
     model=$(lscpu | sed -n 's/^Model name:[[:space:]]*//p' | head -1)
-    if [[ $model =~ $CPU_MODEL_REGEX ]]; then
+    if [ -z "${CPU_MODEL_REGEX-}" ] || [ "$CPU_MODEL_REGEX" = . ]; then
+        result CPU Model INFO "$model"
+    elif [[ $model =~ $CPU_MODEL_REGEX ]]; then
         result CPU Model PASS "$model"
     else
         result CPU Model FAIL "found '$model', expected '$CPU_MODEL_REGEX'"
@@ -112,14 +114,18 @@ check_ram() {
     memtotal_gib=$(awk -v k="$memtotal_kb" 'BEGIN { printf "%.1f", k / 1048576 }')
     min_gib=$(awk -v g="$RAM_GB" 'BEGIN { printf "%.1f", g * 0.93 }')
 
-    if [ "$total_mb" -gt 0 ]; then
+    if [ "${RAM_GB:-0}" -eq 0 ]; then
+        result RAM Installed INFO "$((total_mb / 1024)) GB in $n modules, $memtotal_gib GiB visible to the OS"
+    elif [ "$total_mb" -gt 0 ]; then
         if [ "$total_mb" -eq $((RAM_GB * 1024)) ]; then
             result RAM Installed PASS "$((total_mb / 1024)) GB in $n modules"
         else
             result RAM Installed FAIL "$((total_mb / 1024)) GB in $n modules, expected $RAM_GB GB"
         fi
     fi
-    if fgt "$min_gib" "$memtotal_gib"; then
+    if [ "${RAM_GB:-0}" -eq 0 ]; then
+        :
+    elif fgt "$min_gib" "$memtotal_gib"; then
         result RAM Usable FAIL "$memtotal_gib GiB visible to the OS, expected about $RAM_GB GB"
     else
         result RAM Usable PASS "$memtotal_gib GiB visible to the OS"
@@ -173,14 +179,16 @@ check_gpu() {
         name=$(trim "$name"); mem=$(trim "$mem"); bus=$(trim "$bus"); drv=$(trim "$drv")
         vbios=$(trim "$vbios"); serial=$(trim "$serial"); genmax=$(trim "$genmax"); widthmax=$(trim "$widthmax")
         GPU_COUNT=$((GPU_COUNT + 1))
-        [[ $name =~ $GPU_MODEL_REGEX ]] && matched=1
+        [ -n "${GPU_MODEL_REGEX-}" ] && [[ $name =~ $GPU_MODEL_REGEX ]] && matched=1
         is_int "$mem" && [ "$mem" -lt "${GPU_VRAM_MIB_MIN:-0}" ] && vram_ok=0
         result GPU "GPU $idx" INFO "$name, $mem MiB, bus $bus, VBIOS $vbios, S/N $serial"
         result GPU "GPU $idx PCIe" INFO "slot supports Gen$genmax x$widthmax"
     done < <(nvidia-smi --query-gpu=index,name,memory.total,pci.bus_id,driver_version,vbios_version,serial,pcie.link.gen.max,pcie.link.width.max --format=csv,noheader,nounits)
 
     result GPU Driver PASS "NVIDIA $drv loaded, $GPU_COUNT GPU(s)"
-    if [ "$matched" = 1 ]; then
+    if [ -z "${GPU_MODEL_REGEX-}" ] || [ "$GPU_MODEL_REGEX" = . ]; then
+        result GPU Model INFO "$name"
+    elif [ "$matched" = 1 ]; then
         result GPU Model PASS "$name"
     else
         result GPU Model FAIL "found '$name', expected '$GPU_MODEL_REGEX'"

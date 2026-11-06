@@ -1,0 +1,35 @@
+# hwcheck.conf: the specs a machine is sold with.
+#
+# Save this file as "hwcheck.conf" at the top level of any USB stick
+# (FAT32, exFAT or NTFS). Plug that stick in together with the test stick
+# and start QUICK or FULL as usual: the test uses these specs instead of the
+# built-in ones. You can edit it with Notepad, TextEdit or any text editor.
+#
+# Rules:
+# - One setting per line, NAME=value. Lines starting with # are notes.
+# - Leave a setting out (or put # in front of it) and it is not checked.
+# - Model names are matched as plain text, anywhere in the name the machine
+#   reports. Use the short part: "i7-12700K", not "Intel Core i7-12700K",
+#   because Intel writes "Intel(R) Core(TM) i7-12700K".
+# - Check a file before using it: tools/hwcheck-profile.sh --check hwcheck.conf
+
+# Title shown on the result screen
+SPEC_NAME=Quadro RTX 6000 24GB / i9-10980XE 18C/36T / 128GB RAM / 2.5TB storage
+
+# CPU
+CPU_MODEL=i9-10980XE
+CPU_CORES=18
+CPU_THREADS=36
+# Flags the CPU must have. "avx2 avx512f" for Intel X299 / Xeon, "avx2" for most others
+CPU_FLAGS_REQUIRED=avx2 avx512f
+
+# Memory installed, in GB
+RAM_GB=128
+
+# NVIDIA GPU. Delete these two lines for a machine without one.
+# (A machine without an NVIDIA GPU: GPU_REQUIRED=0)
+GPU_MODEL=Quadro RTX 6000
+GPU_VRAM_GB=24
+
+# All internal disks together, in TB (decimal, like on the label: 2.5 or 2,5)
+DISK_TOTAL_TB=2.5

@@ -76,7 +76,10 @@ protect_disks() {
 
 check_disks_inventory() {
     local entry name size kind model serial total=0 min
-    if [ "${#TEST_DISKS[@]}" -eq 0 ]; then
+    if [ "${#TEST_DISKS[@]}" -eq 0 ] && [ "${DISK_TOTAL_GB_MIN:-0}" -eq 0 ]; then
+        result Disk Detected INFO "no internal disks found"
+        return
+    elif [ "${#TEST_DISKS[@]}" -eq 0 ]; then
         result Disk Detected FAIL "no internal disks found"
         return
     fi
@@ -85,6 +88,10 @@ check_disks_inventory() {
         total=$((total + size))
         result Disk "$name" INFO "$(human_bytes "$size") $kind $model (S/N $serial)"
     done
+    if [ "${DISK_TOTAL_GB_MIN:-0}" -eq 0 ]; then
+        result Disk Capacity INFO "${#TEST_DISKS[@]} disk(s), $(human_bytes "$total") total"
+        return
+    fi
     min=$(awk -v g="${DISK_TOTAL_GB_MIN:-0}" 'BEGIN { printf "%.0f", g * 1e9 }')
     if awk -v t="$total" -v m="$min" 'BEGIN { exit !(t >= m) }'; then
         result Disk Capacity PASS "${#TEST_DISKS[@]} disk(s), $(human_bytes "$total") total"

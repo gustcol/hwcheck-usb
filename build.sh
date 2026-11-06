@@ -31,7 +31,7 @@ fi
 echo "==> Building the live image"
 docker run --rm --privileged --ulimit nofile=1024:524288 \
     -v "$ROOT:/src:ro" -v "$WORK:/work" -v "$OUT:/out" \
-    -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+    -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" -e HWCHECK_VERSION="${HWCHECK_VERSION:-}" \
     "$DEBIAN_IMAGE" bash /src/live/build-in-container.sh
 
 echo "==> Done"

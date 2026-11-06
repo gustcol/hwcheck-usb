@@ -2,16 +2,24 @@
 # Write the ISO to a USB stick and, on Linux, add a FAT32 partition labeled
 # HWREPORT in the free space so the test report is saved on the stick.
 #
-#   sudo tools/make-usb.sh out/hwcheck-YYYYMMDD.iso /dev/sdX        (Linux)
-#   sudo tools/make-usb.sh out/hwcheck-YYYYMMDD.iso /dev/diskN      (macOS)
+#   sudo tools/make-usb.sh out/hwcheck-YYYYMMDD.iso /dev/sdX [hwcheck.conf]   (Linux)
+#   sudo tools/make-usb.sh out/hwcheck-YYYYMMDD.iso /dev/diskN                (macOS)
+#
+# On Linux, an optional hwcheck.conf (see tools/hwcheck-profile.sh) is copied
+# to the HWREPORT partition, so the stick tests against those specs.
 #
 # EVERYTHING ON THE TARGET DEVICE IS ERASED.
 set -euo pipefail
 
 iso=${1:-}
 dev=${2:-}
+conf=${3:-}
 if [ -z "$iso" ] || [ -z "$dev" ] || [ ! -f "$iso" ]; then
-    sed -n '2,9p' "$0"
+    sed -n '2,11p' "$0"
+    exit 1
+fi
+if [ -n "$conf" ] && [ ! -r "$conf" ]; then
+    echo "can't read $conf"
     exit 1
 fi
 [ "$(id -u)" -eq 0 ] || { echo "run as root (sudo)"; exit 1; }
@@ -45,6 +53,7 @@ if [ "$os" = Darwin ]; then
     dd if="$iso" of="${dev/disk/rdisk}" bs=4m
     sync
     diskutil eject "$dev" || true
+    [ -n "$conf" ] && echo "Note: on macOS the specs file can't go on this stick. Copy it to a second stick."
     cat <<'EOF'
 
 Done. macOS can't add the report partition to this kind of image.
@@ -70,6 +79,14 @@ partprobe "$dev" 2>/dev/null || blockdev --rereadpt "$dev" || true
 sleep 2
 part=$(lsblk -lnpo NAME "$dev" | tail -1)
 mkfs.vfat -F 32 -n HWREPORT "$part"
+if [ -n "$conf" ]; then
+    m=$(mktemp -d)
+    mount "$part" "$m"
+    cp "$conf" "$m/hwcheck.conf" || { umount "$m"; rmdir "$m"; echo "could not copy $conf"; exit 1; }
+    umount "$m"
+    rmdir "$m"
+    echo "Copied $conf to the HWREPORT partition as hwcheck.conf"
+fi
 sync
 lsblk -o NAME,SIZE,FSTYPE,LABEL "$dev"
 echo
