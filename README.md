@@ -15,7 +15,117 @@ It was built for this machine, but the expected spec is a plain config file
 | RAM  | 128 GB |
 | Disk | about 2.5 TB in total |
 
-## Step by step: from download to a verdict in front of the buyer
+## Beginner guide: making the stick and running the test
+
+No experience needed. You need about 20 minutes to make the stick and about
+20 minutes to run the test. Nothing is installed on the machine being tested
+and nothing on its disks is changed.
+
+### What you need
+
+- A **USB stick of 4 GB or more**. Everything on it will be erased, so
+  copy off anything you want to keep.
+- A computer with internet (Windows or Mac) to make the stick.
+- For the test itself: the workstation, a monitor, a keyboard, and the stick.
+
+### Part 1: make the stick (on your own computer)
+
+**1. Download the test file.** Click this link and save the file:
+
+> https://github.com/gustcol/hwcheck-usb/releases/download/v2026.11.06/hwcheck-20261106.iso
+
+It's about 760 MB and ends up in your **Downloads** folder as
+`hwcheck-20261106.iso`. Don't open it or double-click it. Just leave it
+there.
+
+**2. Install balenaEtcher.** This is a free program that copies the file onto
+the stick the right way. Go to https://etcher.balena.io, click **Download**,
+and install it like any other program. On a Mac, drag it into
+Applications.
+
+**3. Plug in the USB stick.** If Windows or the Mac opens a window for it,
+just close that window.
+
+**4. Open balenaEtcher.** You'll see three buttons, from left to right:
+
+1. **Flash from file**: click it and pick `hwcheck-20261106.iso` from your
+   Downloads folder.
+2. **Select target**: click it and tick **only your USB stick**. Check the
+   size (for example "8 GB" or "16 GB") and the name so you're sure it's
+   the stick. **Don't pick your computer's own disk.** If you're not sure,
+   unplug the stick, see which entry disappears, and plug it back in.
+3. **Flash!**: click it. The computer may ask for your password or ask
+   "allow this app to make changes?". Say yes.
+
+It takes 3 to 10 minutes. balenaEtcher writes the stick and then checks it
+by itself. Wait until it says **Flash Complete!**
+
+**5. Ignore any "format" message.** After it finishes, Windows may say
+*"You need to format the disk in drive E: before you can use it"*. Click
+**Cancel**. Never click "Format disk", because that would erase the stick
+you just made. A Mac may say *"The disk you inserted was not readable"*. Click
+**Ignore** or **Eject**. Both messages are normal: your computer just can't
+read the test system on the stick.
+
+**6. Remove the stick.** Close balenaEtcher and unplug the stick. The stick
+is ready, and you only need to make it once.
+
+### Part 2: run the test (on the workstation)
+
+**1. Connect everything.** Plug the monitor cable into the **graphics card**
+(the long card with the video outputs on the back, low on the case). Don't
+use the motherboard's video outputs, because this processor has no built-in
+graphics and those outputs show nothing. Plug in the keyboard and the USB
+stick.
+
+**2. Turn the machine on and open the boot menu.** Right after pressing the
+power button, tap the boot menu key about once a second until a menu appears:
+
+| Motherboard brand (shown on the first screen) | Key to tap |
+|---|---|
+| ASUS | `F8` |
+| MSI or ASRock | `F11` |
+| Gigabyte | `F12` |
+| Not sure | try `F12`, then `F11`, then `F8` (restart between tries) |
+
+If Windows or Linux starts normally instead, the key was too late or wrong.
+Restart and try again.
+
+**3. Pick the USB stick.** Use the arrow keys and press `Enter`. If the stick
+shows up twice, choose the one that starts with **UEFI:**.
+
+**4. Wait.** A menu with a list of options appears. **Don't touch
+anything.** After 10 seconds the test starts by itself (the **QUICK** option,
+about 16 minutes). The screen shows each check as it runs. The fans will get
+loud during the stress tests. That's expected.
+
+**5. Read the result.** At the end a big word fills the screen:
+
+| You see | Meaning |
+|---|---|
+| **PASSED** (green) | everything works and matches the advertised specs |
+| **PASSED WITH WARNINGS** (yellow) | everything works; the lines below explain small notes (for example, it ran a bit hot) |
+| **FAILED** (red) | something is wrong or doesn't match; the lines below say what |
+
+Below the word there's one line per part (CPU, RAM, GPU, Disk, Network). Take
+a photo of the screen with your phone if you want to keep the result.
+
+**6. Turn it off.** Type `poweroff` and press `Enter`. Wait until the machine
+turns off, then remove the stick. Next time it boots normally into its own
+system, exactly as before.
+
+### If something goes wrong
+
+| Problem | What to do |
+|---|---|
+| The stick doesn't appear in the boot menu | Unplug it, plug it into a different USB port (one on the back of the case), and restart. If it still doesn't show up, make the stick again. |
+| The screen goes black after the menu and stays black for more than 2 minutes | Hold the power button to turn it off. Start again, and in the menu use the down arrow to choose **"QUICK, safe graphics"**, then press `Enter`. |
+| A message about **Secure Boot** or "security violation" appears, or the result says "Secure Boot is on" | Secure Boot must be turned off. Restart, tap `Del` (or `F2`) to enter the BIOS setup, find **Secure Boot** (usually under *Boot* or *Security*), set it to **Disabled**, then choose *Save & Exit*. After the test you can turn it back on. |
+| No picture at all on the monitor | The cable is probably in the motherboard. Move it to the graphics card. |
+| You need to stop the test early | Press `Ctrl` + `C`. It stops and still shows a result for what it tested. |
+| The buyer wants a longer test | In the menu, before the 10 seconds run out, press the down arrow once to choose **FULL** (about 1 hour) and press `Enter`. |
+
+## Step by step for technical users
 
 You need a USB stick of 4 GB or more (it gets erased) and, optionally, a
 second small stick for the report.
