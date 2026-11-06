@@ -32,10 +32,10 @@ and nothing on its disks is changed.
 
 **1. Download the test file.** Click this link and save the file:
 
-> https://github.com/gustcol/hwcheck-usb/releases/download/v2026.11.06/hwcheck-20261106.iso
+> https://github.com/gustcol/hwcheck-usb/releases/download/v2026.11.06.2/hwcheck-20261106.2.iso
 
 It's about 760 MB and ends up in your **Downloads** folder as
-`hwcheck-20261106.iso`. Don't open it or double-click it. Just leave it
+`hwcheck-20261106.2.iso`. Don't open it or double-click it. Just leave it
 there.
 
 **2. Install balenaEtcher.** This is a free program that copies the file onto
@@ -48,7 +48,7 @@ just close that window.
 
 **4. Open balenaEtcher.** You'll see three buttons, from left to right:
 
-1. **Flash from file**: click it and pick `hwcheck-20261106.iso` from your
+1. **Flash from file**: click it and pick `hwcheck-20261106.2.iso` from your
    Downloads folder.
 2. **Select target**: click it and tick **only your USB stick**. Check the
    size (for example "8 GB" or "16 GB") and the name so you're sure it's
