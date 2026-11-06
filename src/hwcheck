@@ -123,9 +123,11 @@ main() {
     check_network
 
     section "2/7 Disk read test"
+    protect_disks quiet
     run_disk_read "$T_DISK"
 
     section "3/7 Disk health (SMART)"
+    protect_disks quiet
     check_disk_health
 
     section "4/7 GPU stress (gpu-burn)"
@@ -141,6 +143,7 @@ main() {
     run_combined "$T_COMBO"
 
     section "Final checks"
+    protect_disks quiet
     finish_disk_selftests
     check_kernel_log
 

@@ -40,7 +40,7 @@ cpu_throttle_count() {
 # One CSV line per GPU: temp,power,sm_clock,util,pcie_width,hw_slow,hw_thermal,sw_thermal,power_brake
 gpu_sample() {
     local p=$GPU_THROTTLE_PREFIX
-    nvidia-smi --query-gpu=temperature.gpu,power.draw,clocks.sm,utilization.gpu,pcie.link.width.current,"$p.hw_slowdown,$p.hw_thermal_slowdown,$p.sw_thermal_slowdown,$p.hw_power_brake_slowdown" \
+    timeout 5 nvidia-smi --query-gpu=temperature.gpu,power.draw,clocks.sm,utilization.gpu,pcie.link.width.current,"$p.hw_slowdown,$p.hw_thermal_slowdown,$p.sw_thermal_slowdown,$p.hw_power_brake_slowdown" \
         --format=csv,noheader,nounits 2>/dev/null
 }
 
@@ -109,7 +109,9 @@ phase_thermals() {
         fi
     fi
     if { [ "$comp" = GPU ] || [ "$comp" = System ]; } && gpu_available; then
-        thr=$(tr ' ' '\n' <<<"$PH_GPU_THR" | sort -u | grep . | paste -sd, -)
+        # A reason counts only if it showed up in 3+ samples (about 6 s);
+        # single blips are normal on a healthy card.
+        thr=$(tr ' ' '\n' <<<"$PH_GPU_THR" | grep . | sort | uniq -c | awk '$1 >= 3 { print $2 }' | paste -sd, -)
         if [ "$PH_GPU_T" -ge "${GPU_TEMP_WARN_C:-88}" ] || [ -n "$thr" ]; then
             result "$comp" "Cooling (GPU)" WARN "max ${PH_GPU_T}C, ${PH_GPU_P%.*}W, ${PH_GPU_CLK} MHz${thr:+, throttled: $thr}"
         else
@@ -241,5 +243,10 @@ run_combined() {
 stop_background() {
     local pid
     for pid in "${BG_PIDS[@]}"; do kill "$pid" 2>/dev/null; done
-    wait 2>/dev/null
+    # gpu_burn forks one worker per GPU; make sure none keep running
+    pkill -f "$GPU_BURN" 2>/dev/null
+    pkill -x stress-ng 2>/dev/null
+    pkill -x stressapptest 2>/dev/null
+    for pid in "${BG_PIDS[@]}"; do wait "$pid" 2>/dev/null; done
+    return 0
 }

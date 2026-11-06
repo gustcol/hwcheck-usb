@@ -31,7 +31,7 @@ filter_disks() {
         .blockdevices[]
         | select(.type == "disk")
         | select((.tran // "") != "usb")
-        | select(.name | test("^(loop|ram|zram|sr|md|dm-)") | not)
+        | select(.name | test("^(loop|ram|zram|sr|md|dm-)|^mmcblk[0-9]+(boot|rpmb)") | not)
         | select(.name != $skip)
         | select((.size // 0) > 0)
         | [ .name, (.size | tostring),
@@ -50,8 +50,11 @@ discover_disks() {
     done < <(lsblk -J -d -b -o NAME,SIZE,TYPE,TRAN,ROTA,MODEL,SERIAL | filter_disks "$(live_medium_disk)")
 }
 
+# protect_disks [quiet]: lock every test disk and partition read-only. Called
+# again before each disk phase, because an NVMe controller reset can clear
+# the flag. With "quiet" only a failure is reported.
 protect_disks() {
-    local entry name dev p bad=0 n=0
+    local quiet=${1-} entry name dev p bad=0 n=0
     for entry in "${TEST_DISKS[@]}"; do
         name=${entry%%$'\t'*}
         for dev in "/dev/$name" $(lsblk -lnpo NAME "/dev/$name" | tail -n +2); do
@@ -62,7 +65,9 @@ protect_disks() {
         n=$((n + 1))
     done
     [ "$n" -eq 0 ] && return 0
-    if [ "$bad" -eq 0 ]; then
+    if [ "$bad" -eq 0 ] && [ -n "$quiet" ]; then
+        return 0
+    elif [ "$bad" -eq 0 ]; then
         result Disk "Write protection" PASS "all $n internal disks locked read-only by the kernel"
     else
         result Disk "Write protection" WARN "$bad device(s) could not be locked read-only (tests only read anyway)"
@@ -103,23 +108,26 @@ smart_eval() {
             | [.critical_warning, .media_errors, .percentage_used, .available_spare, .available_spare_threshold]
             | map(tostring) | join(" ")' "$f")
         detail="health $([ "$passed" = true ] && echo OK || echo FAILED), ${poh}h powered on, ${pu}% wear, spare ${sp}%, media errors $me, ${temp}C"
-        if [ "$passed" != true ] || [ "$cw" != 0 ] || [ "$me" != 0 ]; then
+        # critical_warning bit 1 (value 2) is "over temperature": a warning,
+        # the other bits (spare, reliability, read-only, backup) are failures.
+        if [ "$passed" != true ] || [ $((cw & ~2)) -ne 0 ]; then
             status=FAIL
-        elif [ "$pu" -ge 90 ] || [ "$sp" -le "$spt" ]; then
+        elif [ $((cw & 2)) -ne 0 ] || [ "$me" != 0 ] || [ "$pu" -ge 90 ] || [ "$sp" -le "$spt" ]; then
             status=WARN
         else
             status=PASS
         fi
     else
-        attr() { jq -r --argjson id "$1" '[.ata_smart_attributes.table[]? | select(.id == $id) | .raw.value][0] // 0' "$f"; }
+        # Some SSDs pack extra data into the upper raw bytes; the count is the low 16 bits.
+        attr() { jq -r --argjson id "$1" '([.ata_smart_attributes.table[]? | select(.id == $id) | .raw.value][0] // 0) % 65536' "$f"; }
         realloc=$(attr 5)
         uncorr=$(attr 187)
         pending=$(attr 197)
         offline=$(attr 198)
         detail="health $([ "$passed" = true ] && echo OK || echo FAILED), ${poh}h powered on, reallocated $realloc, pending $pending, uncorrectable $offline, ${temp}C"
-        if [ "$passed" != true ] || [ "$pending" != 0 ] || [ "$offline" != 0 ]; then
+        if [ "$passed" != true ] || [ "$pending" != 0 ]; then
             status=FAIL
-        elif [ "$realloc" != 0 ] || [ "$uncorr" != 0 ]; then
+        elif [ "$realloc" != 0 ] || [ "$uncorr" != 0 ] || [ "$offline" != 0 ]; then
             status=WARN
         else
             status=PASS
@@ -133,12 +141,12 @@ check_disk_health() {
     for entry in "${TEST_DISKS[@]}"; do
         name=${entry%%$'\t'*}
         out=$LOG_DIR/smart-$name.json
-        smartctl -x -j "/dev/$name" >"$out" 2>/dev/null
-        smartctl -x "/dev/$name" >"$LOG_DIR/smart-$name.txt" 2>&1
+        timeout 90 smartctl -x -j "/dev/$name" >"$out" 2>/dev/null
+        timeout 90 smartctl -x "/dev/$name" >"$LOG_DIR/smart-$name.txt" 2>&1
         IFS=$'\t' read -r status detail < <(smart_eval "$out")
         result Disk "$name SMART" "$status" "$detail"
         # Short self-test runs inside the drive firmware, it never touches data.
-        smartctl -t short "/dev/$name" >>"$LOG_DIR/smart-$name.txt" 2>&1 || true
+        timeout 60 smartctl -t short "/dev/$name" >>"$LOG_DIR/smart-$name.txt" 2>&1 || true
     done
     return 0
 }
@@ -164,7 +172,7 @@ finish_disk_selftests() {
     for entry in "${TEST_DISKS[@]}"; do
         name=${entry%%$'\t'*}
         out=$LOG_DIR/selftest-$name.json
-        smartctl -l selftest -j "/dev/$name" >"$out" 2>/dev/null
+        timeout 60 smartctl -l selftest -j "/dev/$name" >"$out" 2>/dev/null
         st=$(selftest_eval "$out")
         case $st in
         PASS) result Disk "$name self-test" PASS "drive short self-test completed without error" ;;
@@ -187,10 +195,10 @@ run_disk_read() {
     for entry in "${TEST_DISKS[@]}"; do
         IFS=$'\t' read -r name size kind model serial <<<"$entry"
         printf '  %s... reading /dev/%s for %ss%s\n' "$C_DIM" "$name" "$((dur + rdur))" "$C_0"
-        fio --name=seqread --filename="/dev/$name" --readonly --rw=read --bs=1M --direct=1 \
+        timeout $((dur + 120)) fio --name=seqread --filename="/dev/$name" --readonly --rw=read --bs=1M --direct=1 \
             --ioengine=libaio --iodepth=32 --runtime="$dur" --time_based \
             --output-format=json --output="$LOG_DIR/fio-seq-$name.json" >/dev/null 2>&1
-        fio --name=randread --filename="/dev/$name" --readonly --rw=randread --bs=4k --direct=1 \
+        timeout $((rdur + 120)) fio --name=randread --filename="/dev/$name" --readonly --rw=randread --bs=4k --direct=1 \
             --ioengine=libaio --iodepth=32 --numjobs=4 --group_reporting --runtime="$rdur" --time_based \
             --output-format=json --output="$LOG_DIR/fio-rand-$name.json" >/dev/null 2>&1
         read -r err bw _ < <(fio_eval "$LOG_DIR/fio-seq-$name.json")

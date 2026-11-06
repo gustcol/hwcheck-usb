@@ -15,19 +15,21 @@ mkdir -p "$WORK" "$OUT"
 
 echo "==> Building gpu-burn ($GPU_BURN_COMMIT, archs $GPU_ARCHS)"
 if [ ! -x "$WORK/gpu-burn/gpu_burn" ] || [ "$(cat "$WORK/gpu-burn/gpu-burn.commit" 2>/dev/null)" != "$GPU_BURN_COMMIT" ]; then
+    src=$WORK/gpu-burn-src
+    [ -d "$src/.git" ] || git clone -q https://github.com/wilicc/gpu-burn "$src"
+    git -C "$src" fetch -q origin
+    git -C "$src" checkout -q "$GPU_BURN_COMMIT"
     rm -rf "$WORK/gpu-burn"
-    docker build -f "$ROOT/docker/gpu-burn.Dockerfile" --target build -t hwcheck-gpu-burn:build \
-        --build-arg CUDA_IMAGE="$CUDA_IMAGE" \
-        --build-arg GPU_BURN_COMMIT="$GPU_BURN_COMMIT" \
-        --build-arg GPU_ARCHS="$GPU_ARCHS" \
-        "$ROOT/docker"
-    cid=$(docker create hwcheck-gpu-burn:build)
-    docker cp "$cid:/out" "$WORK/gpu-burn"
-    docker rm "$cid" >/dev/null
+    mkdir -p "$WORK/gpu-burn"
+    docker run --rm \
+        -v "$src:/src:ro" -v "$ROOT/docker:/scripts:ro" -v "$WORK/gpu-burn:/out" \
+        -e GPU_ARCHS="$GPU_ARCHS" -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+        "$CUDA_IMAGE" bash /scripts/build-gpu-burn.sh
+    echo "$GPU_BURN_COMMIT" >"$WORK/gpu-burn/gpu-burn.commit"
 fi
 
 echo "==> Building the live image"
-docker run --rm --privileged \
+docker run --rm --privileged --ulimit nofile=1024:524288 \
     -v "$ROOT:/src:ro" -v "$WORK:/work" -v "$OUT:/out" \
     -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
     "$DEBIAN_IMAGE" bash /src/live/build-in-container.sh

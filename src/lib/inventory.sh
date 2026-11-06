@@ -148,7 +148,14 @@ check_gpu() {
         result GPU "PCI device" INFO "${line#* }"
     done <<<"$pci"
 
-    if ! nvidia-smi -L >"$LOG_DIR/nvidia-smi-L.txt" 2>&1; then
+    # The module can still be loading right after boot: retry for ~40 s
+    local try
+    modprobe nvidia 2>/dev/null || true
+    for try in $(seq 1 20); do
+        timeout 15 nvidia-smi -L >"$LOG_DIR/nvidia-smi-L.txt" 2>&1 && break
+        sleep 2
+    done
+    if ! timeout 15 nvidia-smi -L >"$LOG_DIR/nvidia-smi-L.txt" 2>&1; then
         dmesg | grep -iE 'nvidia|nvrm' >"$LOG_DIR/dmesg-nvidia.txt" 2>/dev/null
         local hint="see logs/dmesg-nvidia.txt"
         [[ $(secure_boot_state) == *"Secure Boot ON"* ]] && hint="Secure Boot is ON, disable it in the BIOS and reboot"
@@ -156,7 +163,8 @@ check_gpu() {
         return
     fi
     nvidia-smi -pm 1 >/dev/null 2>&1 || true
-    nvidia-smi -q >"$LOG_DIR/nvidia-smi-q.txt" 2>&1 || true
+    timeout 30 nvidia-smi -q >"$LOG_DIR/nvidia-smi-q.txt" 2>&1 || true
+    log "nvidia-smi ready after $try attempt(s)"
     if nvidia-smi --help-query-gpu 2>/dev/null | grep -q 'clocks_event_reasons.hw_slowdown'; then
         GPU_THROTTLE_PREFIX=clocks_event_reasons
     fi

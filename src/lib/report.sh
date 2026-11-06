@@ -2,16 +2,30 @@
 # Kernel error scan, final verdict screen, text/HTML report, saving to USB.
 
 KLOG_BASELINE=0
+KLOG_IGNORE='sr[0-9]|loop[0-9]' 
 REPORT_TXT=$RUN_DIR/report.txt
 REPORT_HTML=$RUN_DIR/report.html
 
-KLOG_CPU='mce: \[Hardware Error\]|Machine check|EDAC .*(CE|UE)|soft lockup|hard LOCKUP|BUG: |Oops'
+KLOG_CPU='mce: \[Hardware Error\]|Machine check|EDAC MC[0-9]+: [0-9]+ (CE|UE) |soft lockup|hard LOCKUP|BUG: |Oops'
 KLOG_GPU='NVRM: Xid|fallen off the bus'
 KLOG_DISK='I/O error|nvme.*(timeout|reset controller)|ata[0-9.]+: (exception|failed command)|blk_update_request'
 KLOG_PCIE='PCIe Bus Error|AER: .*error'
 
+# Remember the kernel uptime when tests start; later lines are "during tests".
+# Uses timestamps, not line counts, so a wrapped ring buffer can't shift it.
 klog_mark() {
-    KLOG_BASELINE=$(dmesg 2>/dev/null | wc -l)
+    KLOG_BASELINE=$(cut -d' ' -f1 /proc/uptime)
+}
+
+# klog_split FILE BASELINE BEFORE DURING
+klog_split() {
+    awk -v t="$2" -v b="$3" -v d="$4" '
+        match($0, /^\[ *[0-9]+\.[0-9]+\]/) {
+            ts = substr($0, 2, RLENGTH - 2) + 0
+            if (ts < t + 0) print > b; else print > d
+            next
+        }
+        { print > d }' "$1"
 }
 
 # klog_eval FILE -> lines "CATEGORY<TAB>COUNT" for each category with hits
@@ -19,20 +33,25 @@ klog_eval() {
     local f=$1 n
     n=$(grep -cE "$KLOG_CPU" "$f"); [ "$n" -gt 0 ] && printf 'CPU/RAM\t%s\n' "$n"
     n=$(grep -cE "$KLOG_GPU" "$f"); [ "$n" -gt 0 ] && printf 'GPU\t%s\n' "$n"
-    n=$(grep -vE 'sr[0-9]|loop[0-9]' "$f" | grep -cE "$KLOG_DISK"); [ "$n" -gt 0 ] && printf 'Disk\t%s\n' "$n"
+    n=$(grep -vE "$KLOG_IGNORE" "$f" | grep -cE "$KLOG_DISK"); [ "$n" -gt 0 ] && printf 'Disk\t%s\n' "$n"
     n=$(grep -cE "$KLOG_PCIE" "$f"); [ "$n" -gt 0 ] && printf 'PCIe\t%s\n' "$n"
     return 0
 }
 
 check_kernel_log() {
     local before=$LOG_DIR/dmesg-before-tests.txt during=$LOG_DIR/dmesg-during-tests.txt cat n found=0
+    local usb
     dmesg >"$LOG_DIR/dmesg.txt" 2>/dev/null
-    head -n "$KLOG_BASELINE" "$LOG_DIR/dmesg.txt" >"$before"
-    tail -n +"$((KLOG_BASELINE + 1))" "$LOG_DIR/dmesg.txt" >"$during"
+    : >"$before"
+    : >"$during"
+    klog_split "$LOG_DIR/dmesg.txt" "$KLOG_BASELINE" "$before" "$during"
+    # I/O errors from USB sticks (boot or report) are not the machine's disks
+    usb=$(lsblk -dno NAME,TRAN 2>/dev/null | awk '$2 == "usb" { printf "|\\b%s[0-9]*\\b", $1 }')
+    KLOG_IGNORE="sr[0-9]|loop[0-9]$usb"
     while IFS=$'\t' read -r cat n; do
         [ -n "$cat" ] || continue
         found=1
-        if [ "$cat" = PCIe ] && ! grep -qE 'Uncorrect|Fatal' "$during"; then
+        if [ "$cat" = PCIe ] && ! grep -E "$KLOG_PCIE" "$during" | grep -qiE 'uncorrect|fatal'; then
             result System "Kernel log" WARN "$n corrected PCIe errors during tests"
         else
             result System "Kernel log" FAIL "$n $cat hardware errors logged during tests (see logs/dmesg-during-tests.txt)"
@@ -126,7 +145,7 @@ EOF
 # Copy the report to the first partition labeled HWREPORT (on the boot stick or another stick)
 save_report() {
     local dev mnt=/mnt/hwreport dir
-    dev=$(blkid -l -t LABEL=HWREPORT -o device 2>/dev/null)
+    dev=$(blkid -c /dev/null -l -t LABEL=HWREPORT -o device 2>/dev/null)
     if [ -z "$dev" ]; then
         result Report Saved INFO "no HWREPORT partition found, report kept in $RUN_DIR (run hwcheck-save after plugging one in)"
         return 1
@@ -137,9 +156,14 @@ save_report() {
         return 1
     fi
     dir=$mnt/hwcheck-$(date +%Y%m%d-%H%M%S)
-    mkdir -p "$dir" && cp -r "$REPORT_TXT" "$REPORT_HTML" "$LOG_DIR" "$dir/" && sync
-    umount "$mnt" 2>/dev/null
-    result Report Saved INFO "copied to $dev (${dir#"$mnt"/})"
+    if mkdir -p "$dir" && cp -r "$REPORT_TXT" "$REPORT_HTML" "$LOG_DIR" "$dir/" && sync; then
+        umount "$mnt" 2>/dev/null
+        result Report Saved INFO "copied to $dev (${dir#"$mnt"/})"
+    else
+        umount "$mnt" 2>/dev/null
+        result Report Saved WARN "could not write to $dev, report kept in $RUN_DIR"
+        return 1
+    fi
 }
 
 big_text() {

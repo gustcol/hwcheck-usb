@@ -1,0 +1,4 @@
+# Lock every internal disk and partition read-only as soon as it appears.
+# protect-disk skips USB devices, so the boot stick and report sticks stay
+# writable. Named 99- so it runs after the stock storage rules.
+ACTION=="add|change", SUBSYSTEM=="block", KERNEL!="loop*|ram*|zram*|sr*", RUN+="/usr/local/lib/hwcheck/protect-disk %k"

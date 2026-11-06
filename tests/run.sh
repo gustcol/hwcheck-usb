@@ -63,7 +63,10 @@ eq "hdd detected" "HDD" "$(filter_disks "" <"$FX/lsblk.json" | awk -F'\t' '$1=="
 
 # SMART
 eq "smart nvme ok" PASS "$(smart_eval "$FX/smart-nvme-ok.json" | cut -f1)"
-eq "smart nvme media errors" FAIL "$(smart_eval "$FX/smart-nvme-bad.json" | cut -f1)"
+eq "smart nvme media errors" WARN "$(smart_eval "$FX/smart-nvme-bad.json" | cut -f1)"
+eq "smart nvme temp warning" WARN "$(jq '.nvme_smart_health_information_log.critical_warning = 2' "$FX/smart-nvme-ok.json" >"$RUN_DIR/t.json"; smart_eval "$RUN_DIR/t.json" | cut -f1)"
+eq "smart nvme spare warning" FAIL "$(jq '.nvme_smart_health_information_log.critical_warning = 1' "$FX/smart-nvme-ok.json" >"$RUN_DIR/t.json"; smart_eval "$RUN_DIR/t.json" | cut -f1)"
+eq "smart ata packed raw" PASS "$(jq '.ata_smart_attributes.table = [{"id":197,"raw":{"value":4294967296}}]' "$FX/smart-ata-realloc.json" >"$RUN_DIR/t.json"; smart_eval "$RUN_DIR/t.json" | cut -f1)"
 eq "smart nvme worn" WARN "$(smart_eval "$FX/smart-nvme-worn.json" | cut -f1)"
 eq "smart ata realloc" WARN "$(smart_eval "$FX/smart-ata-realloc.json" | cut -f1)"
 eq "smart ata pending" FAIL "$(smart_eval "$FX/smart-ata-pending.json" | cut -f1)"
@@ -82,6 +85,7 @@ eq "gpu-burn ok" PASS "$(gpu_burn_eval "$FX/gpuburn-ok.log" 1 | cut -f1)"
 eq "gpu-burn gflops" "no calculation errors, ~14702 Gflop/s" "$(gpu_burn_eval "$FX/gpuburn-ok.log" 1 | cut -f2)"
 eq "gpu-burn faulty" FAIL "$(gpu_burn_eval "$FX/gpuburn-faulty.log" 1 | cut -f1)"
 eq "gpu-burn died" FAIL "$(gpu_burn_eval "$FX/gpuburn-died.log" 1 | cut -f1)"
+eq "gpu-burn real A6000 log" PASS "$(gpu_burn_eval "$FX/gpuburn-real-a6000.log" 1 | cut -f1)"
 eq "gpu-burn too few" FAIL "$(gpu_burn_eval "$FX/gpuburn-ok.log" 2 | cut -f1)"
 
 # stress-ng
@@ -95,6 +99,17 @@ eq "stress-ng exit code" bad "$r"
 # kernel log
 eq "klog clean (sr0 ignored)" "" "$(klog_eval "$FX/dmesg-clean.txt")"
 eq "klog errors" "CPU/RAM 1|GPU 1|Disk 1|PCIe 1" "$(klog_eval "$FX/dmesg-errors.txt" | tr '\t' ' ' | paste -sd'|' -)"
+
+# kernel log split by timestamp, USB stick I/O errors ignored
+printf '[    5.000000] boot line\n[  100.500000] mce: [Hardware Error]: CPU 0\n' >"$RUN_DIR/dm.txt"
+klog_split "$RUN_DIR/dm.txt" 50 "$RUN_DIR/b.txt" "$RUN_DIR/d.txt"
+eq "klog split before" 1 "$(wc -l <"$RUN_DIR/b.txt" | tr -d ' ')"
+eq "klog split during" "CPU/RAM 1" "$(klog_eval "$RUN_DIR/d.txt" | tr '\t' ' ')"
+printf 'blk_update_request: I/O error, dev sdb, sector 9\n' >"$RUN_DIR/u.txt"
+KLOG_IGNORE='sr[0-9]|loop[0-9]|\bsdb[0-9]*\b'
+eq "klog usb ignored" "" "$(klog_eval "$RUN_DIR/u.txt")"
+printf 'blk_update_request: I/O error, dev sdbx, sector 9\n' >"$RUN_DIR/u.txt"
+eq "klog other disk counted" "Disk 1" "$(klog_eval "$RUN_DIR/u.txt" | tr '\t' ' ')"
 
 # results and verdict
 result CPU Model PASS "x" >/dev/null

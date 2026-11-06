@@ -15,6 +15,53 @@ It was built for this machine, but the expected spec is a plain config file
 | RAM  | 128 GB |
 | Disk | about 2.5 TB in total |
 
+## Step by step: from download to a verdict in front of the buyer
+
+You need a USB stick of 4 GB or more (it gets erased) and, optionally, a
+second small stick for the report.
+
+1. **Get the ISO.** Download `hwcheck-YYYYMMDD.iso` and its `.sha256` from
+   the [releases](../../releases) page and check it:
+   ```bash
+   shasum -a 256 -c hwcheck-YYYYMMDD.iso.sha256     # macOS
+   sha256sum -c hwcheck-YYYYMMDD.iso.sha256         # Linux
+   ```
+2. **Write the stick.** Clone this repo and run the helper. It refuses
+   anything that isn't a USB device and asks you to type `YES`.
+   ```bash
+   git clone git@github.com:gustcol/hwcheck-usb.git && cd hwcheck-usb
+   diskutil list                                               # macOS: find the stick, e.g. /dev/disk4
+   sudo tools/make-usb.sh ~/Downloads/hwcheck-YYYYMMDD.iso /dev/disk4
+   lsblk -o NAME,SIZE,TRAN,MODEL                               # Linux: find the stick, e.g. /dev/sdb
+   sudo tools/make-usb.sh ~/Downloads/hwcheck-YYYYMMDD.iso /dev/sdb
+   ```
+   On Windows use Rufus in "DD image" mode. Details per OS are in
+   [Writing the stick](#writing-the-stick).
+3. **Optional report stick (macOS only).** On Linux the helper already adds
+   a `HWREPORT` partition. On macOS, format a second stick:
+   `diskutil eraseDisk FAT32 HWREPORT MBR /dev/diskN`.
+4. **Prepare the machine.** Plug in monitor, keyboard and the stick. Use a
+   monitor port on the Quadro (the i9-10980XE has no integrated graphics).
+   Enter the BIOS setup (usually `Del` or `F2` on X299 boards) and make sure
+   **Secure Boot is disabled**. Save and exit.
+5. **Boot from the stick.** Open the boot menu (`F8` on ASUS, `F11` on
+   MSI/ASRock, `F12` on Gigabyte) and pick the USB stick (the `UEFI:` entry
+   if there are two).
+6. **Let it run.** The menu starts **QUICK** after 10 seconds. Pick **FULL**
+   instead if the buyer wants the 1-hour burn-in. The screen shows each
+   check as it happens, with a live line of temperatures, clocks and power.
+7. **Show the result.** At the end a large **PASSED** (green),
+   **PASSED WITH WARNINGS** (yellow) or **FAILED** (red) appears, with one
+   line per component and the reason for anything that isn't green.
+   `less /run/hwcheck/report.txt` shows every detail. If a HWREPORT
+   partition is present, the report (text + HTML + raw logs) is already
+   saved on it.
+8. **Shut down** with `poweroff` and remove the stick. The machine's own
+   OS boots as before. Nothing on its disks was changed.
+
+If the screen goes black right after the menu, reboot and choose
+"QUICK, safe graphics".
+
 ## The disks are never written
 
 The machine being sold has the seller's data and OS on it, so the stick
@@ -115,9 +162,10 @@ containers, so nothing is installed on the host.
 
 What it does:
 
-1. Builds gpu-burn in `nvidia/cuda:12.4.1-devel` with cuBLAS linked
-   statically and pruned to Turing (sm_75) and Ampere (sm_86). The image
-   then only needs the driver's `libcuda.so.1`.
+1. Clones gpu-burn at a pinned commit and compiles it in
+   `nvidia/cuda:12.4.1-devel` with cuBLAS linked statically and pruned to
+   Turing (sm_75) and Ampere (sm_86). The image then only needs the
+   driver's `libcuda.so.1`.
 2. Runs Debian `live-build` (trixie) in a privileged `debian:trixie`
    container. The NVIDIA 550 driver from Debian non-free is compiled with
    DKMS for the image kernel; the build fails if the module is missing.

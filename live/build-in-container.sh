@@ -7,8 +7,11 @@ apt-get update -qq
 apt-get install -y -qq live-build ca-certificates >/dev/null
 
 LB=/work/live
+# Keep the package cache between builds, start everything else fresh
+[ -d "$LB/cache" ] && rm -rf /work/lb-cache && mv "$LB/cache" /work/lb-cache
 rm -rf "$LB"
 mkdir -p "$LB"
+[ -d /work/lb-cache ] && mv /work/lb-cache "$LB/cache"
 cd "$LB"
 
 lb config \
@@ -29,7 +32,7 @@ lb config \
     --iso-application hwcheck \
     --iso-publisher hwcheck \
     --image-name hwcheck \
-    --bootappend-live "boot=live components quiet loglevel=3 noeject noprompt consoleblank=0 live-config.hostname=hwcheck live-config.noautologin systemd.gpt_auto=0 modprobe.blacklist=nouveau nvidia-drm.modeset=1 nvidia-drm.fbdev=1"
+    --bootappend-live "boot=live components quiet loglevel=3 noeject noprompt consoleblank=0 live-config.hostname=hwcheck live-config.noautologin systemd.gpt_auto=0 modprobe.blacklist=nouveau nvidia-drm.modeset=1 nvidia-drm.fbdev=1 nvidia-current-drm.modeset=1 nvidia-current-drm.fbdev=1"
 
 # Our config: package list, hook, systemd/udev files
 cp -a /src/live/config/. config/
